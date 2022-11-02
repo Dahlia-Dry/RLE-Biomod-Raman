@@ -29,7 +29,7 @@ class Spectrum(object):
         self.log='**Spectrum for ' + self.meta['filename'] + ' ('+self.meta['label']+')**      \n      Measurement Date: ' + self.meta['starttime'] + \
                     '       \n      Excitation Wavelength: ' + str(self.meta['excitation_wavelength']) + ' nm' + \
                     '       \n      Acquisition Time: '+str(self.meta['acquisition_time'])+ ' s' + \
-                    '       \n      Sampling Interval: ' + self.meta['interval'] + '       \n'
+                    '       \n      Sampling Interval: ' + str(self.meta['interval']) + '       \n'
         return self.log
     def meta(self):
         try:
@@ -45,8 +45,9 @@ class Spectrum(object):
         return self.noise
     def edit_meta(self,key,value):
         self.meta[key] = value
-    def power_normalize(self):
-        weights = [self.data['Avg_Power'][i] / max(self.data['Avg_Power']) for i in range(len(self.data['Avg_Power']))]
+    def power_normalize(self,weights=None):
+        if weights is None:
+            weights = [self.data['Avg_Power'][i] / max(self.data['Avg_Power']) for i in range(len(self.data['Avg_Power']))]
         for i in range(len(self.data['Spectrum'])):
             self.data['Spectrum'][i] = [x/weights[i] for x in self.data['Spectrum'][i]]
         self.ref = np.mean(np.array(self.data['Spectrum']),axis=0) #across cols
@@ -92,6 +93,8 @@ class Spectrum(object):
         else:
             xaxis ='Raman Shift (cm^-1)'
             xlabel = 'Raman_Shift'
+        df = pd.DataFrame({'xdata':self.data[xlabel],'ydata':self.ref})
+        df.to_csv('spectrum.csv')
         if solo:
             fig=go.Figure()
             fig.add_trace(go.Scatter(x=self.data[xlabel],y=self.ref,mode=mode,
@@ -177,8 +180,9 @@ def biomod_spec_from_upload(contents,filename,label):
     noise= np.std(np.array(data['Spectrum']),axis=0) #across cols
     return Spectrum(data,power.to_dict(orient='list'),log,meta,ref,noise)
 
-def spec_from_file(filename, label, meta={}):
-    if meta == {}:
+def spec_from_file(filename, label, meta=None):
+    if meta is None:
+        meta={}
         meta['filename'] = filename
         meta['label'] = label
         meta['target_raman_shift'] =1049
@@ -190,42 +194,51 @@ def spec_from_file(filename, label, meta={}):
         meta['interval']=1
         meta['concentration']=0
     fspec = open(filename+'.txt') #infer from filepath without extension
-    fpower = open(filename+'.csv')
-    for i in range(14):
-        line = fpower.readline()
-        if i ==11:
-            meta['excitation_wavelength']=line.split(',')[1].strip().split(' ')[0] #nm
-        elif i ==4:
-            meta['starttime'] = line.split(',')[1]
-        elif i ==5:
-            meta['interval']=line.split(',')[1]
+    try:
+        fpower = open(filename+'.csv')
+    except:
+        fpower=None
+    else:
+        for i in range(14):
+            line = fpower.readline()
+            if i ==11:
+                meta['excitation_wavelength']=line.split(',')[1].strip().split(' ')[0] #nm
+            elif i ==4:
+                meta['starttime'] = line.split(',')[1]
+            elif i ==5:
+                meta['interval']=line.split(',')[1]
     pixels=fspec.readline().strip().split('\t')[2:]
     wavelengths=fspec.readline().strip().split('\t')[2:]
     target_lambda = 1/(1/float(meta['excitation_wavelength']) - meta['target_raman_shift']/1e7) #nm
     meas_lambda = 1/(1/float(meta['excitation_wavelength']) - meta['meas_raman_shift']/1e7) # nm
     lambda_calib = target_lambda-meas_lambda
     calib_wavelengths = [float(x) + lambda_calib for x in wavelengths]
-    data = {'Wavelength':wavelengths,
+    data = {'Wavelength':[float(x) for x in wavelengths],
                 'Raman_Shift':[(1/float(meta['excitation_wavelength'])-1/x)*1e7 for x in calib_wavelengths], #in cm^-1
                 'Spectrum':[],
                 'Avg_Power':[]}
     fspec.readline() #discard extra line
-    power=pd.read_csv(fpower)
+    if fpower is not None:
+        power=pd.read_csv(fpower)
     p=meta['pbuffer']
     for line in fspec:
         spec= line.strip().split('\t')[2:]
         assert (len(spec) == len(pixels) ==len(wavelengths)),"length of spectrum"+len(data['Spectrum'])+1+"!= length of pixels or number of wavelengths"
-        avg_power = sum(power['Power (W)'][p:p+meta['acquisition_time']])/meta['acquisition_time']
-        p=p+meta['acquisition_time']
         data['Spectrum'].append(np.array([float(s) for s in spec]))
-        data['Avg_Power'].append(avg_power)
-    log ='**Spectrum for ' + filename + ' ('+label+')**      \n      Measurement Date: ' + meta['starttime'] + \
+        if fpower is not None:
+            avg_power = sum(power['Power (W)'][p:p+meta['acquisition_time']])/meta['acquisition_time']
+            p=p+meta['acquisition_time']
+            data['Avg_Power'].append(avg_power)
+    log ='**Spectrum for ' + filename + ' ('+label+')**      \n      Measurement Date: ' + str(meta['starttime']) + \
                 '       \n      Excitation Wavelength: ' + str(meta['excitation_wavelength']) + \
                 '       \n      Acquisition Time: '+str(meta['acquisition_time'])+ \
-                '       \n      Sampling Interval: ' + meta['interval'] + '       \n'
+                '       \n      Sampling Interval: ' + str(meta['interval']) + '       \n'
     ref=np.mean(np.array(data['Spectrum']),axis=0) #across cols
     noise= np.std(np.array(data['Spectrum']),axis=0) #across cols
-    return Spectrum(data,power.to_dict(orient='list'),log,meta,ref,noise)
+    if fpower is not None:
+        return Spectrum(data,power.to_dict(orient='list'),log,meta,ref,noise)
+    else:
+        return Spectrum(data,None,log,meta,ref,noise)
 
 def spec_from_json(json_spectra,multiple_spad=False):
     spectra_raw= json.loads(json_spectra)
