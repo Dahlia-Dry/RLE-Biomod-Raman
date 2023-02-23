@@ -93,8 +93,8 @@ class Spectrum(object):
         else:
             xaxis ='Raman Shift (cm^-1)'
             xlabel = 'Raman_Shift'
-        df = pd.DataFrame({'xdata':self.data[xlabel],'ydata':self.ref})
-        df.to_csv('spectrum.csv')
+        #df = pd.DataFrame({'xdata':self.data[xlabel],'ydata':self.ref})
+        #df.to_csv('spectrum.csv')
         if solo:
             fig=go.Figure()
             fig.add_trace(go.Scatter(x=self.data[xlabel],y=self.ref,mode=mode,
@@ -242,13 +242,13 @@ def spec_from_file(filename, label, meta=None):
 
 def spec_from_json(json_spectra,multiple_spad=False):
     spectra_raw= json.loads(json_spectra)
-    print(spectra_raw)
+    #print(spectra_raw)
     spectra = []
     buf=[]
     if multiple_spad:
         for exp in spectra_raw:
             for s in exp:
-                print(s.keys())
+                #print(s.keys())
                 buf.append(Spectrum(s['data'],
                                         s['power'],
                                         s['log'],
@@ -259,7 +259,7 @@ def spec_from_json(json_spectra,multiple_spad=False):
             buf=[]
     else:
         for s in spectra_raw:
-            print(s.keys())
+            #print(s.keys())
             spectra.append(Spectrum(s['data'],
                                     s['power'],
                                     s['log'],
